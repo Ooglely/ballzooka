@@ -1,0 +1,7 @@
+{
+  "name": "Ballzooka",
+  "address": "F6:F7:F8:F9:FA:FB",
+  "keystore": "JsonKeyStore",
+  "irk": "43E96EC5C5DBD8D0F5204CFFDECE0096",
+  "advertising_interval": 2000
+}
