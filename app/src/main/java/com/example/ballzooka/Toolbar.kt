@@ -1,5 +1,6 @@
 package com.example.ballzooka
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -43,10 +44,11 @@ val DangerousButtonColors = ButtonColors(
 @Composable
 fun Toolbar(viewModel: BallzookaViewModel = viewModel()) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val telemetry by viewModel.telemetry.collectAsStateWithLifecycle()
 
     Surface(color = Color.Black, modifier = Modifier.fillMaxWidth()) {
         Row(
-            modifier = Modifier.padding(vertical = 8.dp).height(height = 75.dp),
+            modifier = Modifier.padding(vertical = 8.dp).height(height = 60.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
@@ -54,20 +56,20 @@ fun Toolbar(viewModel: BallzookaViewModel = viewModel()) {
                 color = Color.White,
                 modifier = Modifier.padding(horizontal = 8.dp),
                 fontWeight = FontWeight.Bold,
-                fontSize = 48.sp
+                fontSize = 30.sp
             )
             if (uiState.currentState != AppState.START) {
-                Column(modifier = Modifier.padding(horizontal = 8.dp)) {
-                    Text(text = "Wind: 7 mph 64°", color = Color.White, fontSize = 24.sp)
-                    Text(text = "Direction: 125°", color = Color.White, fontSize = 24.sp)
+                Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+                    Text(text = "Wind: 7 mph 69°", color = Color.White, fontSize = 16.sp)
+                    Text(text = "Direction: ${"%.2f".format(telemetry.heading)}°", color = Color.White, fontSize = 16.sp)
                 }
-                Column(modifier = Modifier.padding(horizontal = 8.dp)) {
+                Column(modifier = Modifier.padding(horizontal = 16.dp)) {
                     Text(
                         text = "State: ${uiState.currentState.name}",
                         color = Color.White,
-                        fontSize = 24.sp
+                        fontSize = 16.sp
                     )
-                    Text(text = "Motors: 0 RPM", color = Color.White, fontSize = 24.sp)
+                    Text(text = "Motors: ${telemetry.rpm} RPM", color = Color.White, fontSize = 16.sp)
                 }
             }
             Spacer(Modifier.weight(1f))
@@ -81,7 +83,7 @@ fun StateControls(viewModel: BallzookaViewModel = viewModel()) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
     Row(
-        modifier = Modifier.padding(vertical = 8.dp).height(height = 75.dp),
+        modifier = Modifier.padding(vertical = 8.dp, horizontal = 16.dp).height(height = 60.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         when (uiState.currentState) {
@@ -97,33 +99,32 @@ fun StateControls(viewModel: BallzookaViewModel = viewModel()) {
                 }
             }
             AppState.IDLE -> {
-                Button(onClick = {}, modifier = Modifier.height(48.dp), colors = NormalButtonColors) {
+                Button(onClick = {
+                    viewModel.changeState(AppState.ARMED)
+                }, modifier = Modifier.height(48.dp), colors = NormalButtonColors) {
                     Text("Lock", fontSize = 24.sp)
                 }
+                Spacer(modifier = Modifier.width(16.dp))
                 Button(onClick = {}, modifier = Modifier.height(48.dp), enabled = false, colors = DangerousButtonColors) {
                     Text("Fire", fontSize = 24.sp)
                 }
-                Text(
-                    text = "Connection State: ${uiState.connectionStatus.name}",
-                    color = Color.White,
-                    modifier = Modifier.padding(horizontal = 8.dp),
-                    fontSize = 24.sp
-                )
             }
             AppState.AIMING -> {
                 Text(text = "Cannon is aiming towards location...", color = Color.White, fontSize = 24.sp)
                 Button(onClick = {}, modifier = Modifier.height(48.dp), enabled = false, colors = NormalButtonColors) {
                     Text("Lock", fontSize = 24.sp)
                 }
+                Spacer(modifier = Modifier.width(16.dp))
                 Button(onClick = {}, modifier = Modifier.height(48.dp), enabled = false, colors = DangerousButtonColors) {
                     Text("Fire", fontSize = 24.sp)
                 }
             }
             AppState.ARMED -> {
-                Button(onClick = {}, modifier = Modifier.height(48.dp), colors = NormalButtonColors) {
+                Button(onClick = {viewModel.changeState(AppState.IDLE)}, modifier = Modifier.height(48.dp), colors = NormalButtonColors) {
                     Text("Disarm", fontSize = 24.sp)
                 }
-                Button(onClick = {}, modifier = Modifier.height(48.dp), colors = DangerousButtonColors) {
+                Spacer(modifier = Modifier.width(16.dp))
+                Button(onClick = {viewModel.messenger.send(viewModel.messenger.characteristics!!.commandFlywheelRPM, byteArrayOf(1.toByte()))}, modifier = Modifier.height(48.dp), colors = DangerousButtonColors) {
                     Text("Fire", fontSize = 24.sp)
                 }
             }
@@ -131,6 +132,7 @@ fun StateControls(viewModel: BallzookaViewModel = viewModel()) {
                 Button(onClick = {}, modifier = Modifier.height(48.dp), enabled = false, colors = NormalButtonColors) {
                     Text("Lock", fontSize = 24.sp)
                 }
+                Spacer(modifier = Modifier.width(16.dp))
                 Button(onClick = {}, modifier = Modifier.height(48.dp), enabled = false, colors = DangerousButtonColors) {
                     Text("Fire", fontSize = 24.sp)
                 }

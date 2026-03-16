@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Context
 import android.location.Location
 import android.os.Looper
+import android.util.Log
 import androidx.annotation.RequiresPermission
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -25,6 +26,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -41,6 +43,8 @@ import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
+import com.google.android.gms.maps.CameraUpdate
+import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.maps.android.compose.Circle
@@ -57,27 +61,33 @@ import com.google.maps.android.compose.rememberUpdatedMarkerState
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.launch
 import kotlin.math.*
 
 
 @OptIn(ExperimentalPermissionsApi::class)
-@RequiresPermission(allOf = [
-    Manifest.permission.ACCESS_FINE_LOCATION,
-    Manifest.permission.ACCESS_COARSE_LOCATION,
-    Manifest.permission.BLUETOOTH_ADVERTISE,
-    Manifest.permission.BLUETOOTH_SCAN,
-    Manifest.permission.BLUETOOTH_CONNECT
-])
+@RequiresPermission(
+    allOf = [
+        Manifest.permission.ACCESS_FINE_LOCATION,
+        Manifest.permission.ACCESS_COARSE_LOCATION,
+        Manifest.permission.BLUETOOTH_ADVERTISE,
+        Manifest.permission.BLUETOOTH_SCAN,
+        Manifest.permission.BLUETOOTH_CONNECT
+    ]
+)
 @Composable
 fun MapDisplay(viewModel: BallzookaViewModel = viewModel()) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val telemetry by viewModel.telemetry.collectAsStateWithLifecycle()
+
+    val scope = rememberCoroutineScope()
 
     val userLocationProvider = rememberUserLocationProvider()
     val locationUpdates = userLocationProvider.getLocationUpdates()
     var currentLocation by remember { mutableStateOf<Location?>(null) }
-    var cannonLocation = LatLng(currentLocation?.latitude ?: 0.0, currentLocation?.longitude ?: 0.0)
-    val cannonBearing = 135.0f
-    var userLocation: LatLng = LatLng(37.95613795574523, -91.77284471474142)
+    val cannonLocation = LatLng(telemetry.latitude, telemetry.longitude)
+    val cannonBearing = telemetry.heading
+    val userLocation = LatLng(currentLocation?.latitude ?: 0.0, currentLocation?.longitude ?: 0.0)
 
     val userMarkerState = rememberUpdatedMarkerState(position = userLocation)
 
@@ -92,20 +102,19 @@ fun MapDisplay(viewModel: BallzookaViewModel = viewModel()) {
     )
 
     // 37.956547, -91.772350
-    val markerPosition = currentLocation?.let {
+    val markerPosition = cannonLocation.let {
         LatLng(it.latitude, it.longitude)
     } ?: LatLng(37.956547, -91.772350)
 
 
-
     val cameraPositionState = rememberCameraPositionState {
-        position = CameraPosition.fromLatLngZoom(markerPosition, 20f)
+        position = CameraPosition.fromLatLngZoom(LatLng(37.956547, -91.772350), 20f)
     }
 
     LaunchedEffect(permissionsState.allPermissionsGranted) {
         if (permissionsState.allPermissionsGranted) {
-            userLocationProvider.getLocationUpdates().collect {
-                    location -> currentLocation = location
+            userLocationProvider.getLocationUpdates().collect { location ->
+                currentLocation = location
             }
         }
     }
@@ -116,7 +125,7 @@ fun MapDisplay(viewModel: BallzookaViewModel = viewModel()) {
     )
 
     val conePoints = remember(cannonLocation, cannonBearing) {
-        createConePolygon(cannonLocation, cannonBearing, 30f, 50.0)
+        createConePolygon(cannonLocation, cannonBearing.toFloat(), 30f, 50.0)
     }
 
 
@@ -127,19 +136,23 @@ fun MapDisplay(viewModel: BallzookaViewModel = viewModel()) {
             properties = mapProperties,
             uiSettings = MapUiSettings(
                 myLocationButtonEnabled = true
-            )
+            ),
+            onMapLongClick = { latLng ->
+                handleMapClick(latLng)
+            }
         ) {
             Marker(
                 state = userMarkerState,
                 title = "User Location",
-                snippet = "(${userLocation?.latitude}, ${userLocation?.longitude})"
+                snippet = "(${userLocation.latitude}, ${userLocation.longitude})"
             )
             if (currentLocation != null && uiState.currentState != AppState.START) {
                 Marker(
-                    state = MarkerState(position = markerPosition),
+                    state = MarkerState(position = cannonLocation),
                     title = "Cannon Location",
-                    snippet = "(${currentLocation?.latitude}, ${currentLocation?.longitude})"
+                    snippet = "(${cannonLocation.latitude}, ${cannonLocation.longitude})"
                 )
+
                 Circle(
                     center = markerPosition, // Change to cannon position
                     radius = 50.0,
@@ -157,7 +170,7 @@ fun MapDisplay(viewModel: BallzookaViewModel = viewModel()) {
         if (uiState.currentState != AppState.START) {
             if (permissionsState.allPermissionsGranted) {
                 Text(
-                    text = "Cannon: (${currentLocation?.latitude}, ${currentLocation?.longitude})",
+                    text = "Cannon: (${"%.7f".format(cannonLocation.latitude)}, ${"%.7f".format(cannonLocation.longitude)}) User: (${userLocation.latitude}, ${userLocation.longitude})",
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .padding(top = 16.dp)
@@ -169,7 +182,7 @@ fun MapDisplay(viewModel: BallzookaViewModel = viewModel()) {
                 )
             } else {
                 Button(
-                    onClick = {permissionsState.launchMultiplePermissionRequest()},
+                    onClick = { permissionsState.launchMultiplePermissionRequest() },
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .padding(top = 16.dp)
@@ -179,7 +192,7 @@ fun MapDisplay(viewModel: BallzookaViewModel = viewModel()) {
             }
 
             FloatingActionButton(
-                onClick = {},
+                onClick = { scope.launch { cameraPositionState.animate(CameraUpdateFactory.newLatLng(cannonLocation), 1000) } },
                 elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 6.dp),
                 modifier = Modifier.size(56.dp)
                     .align(Alignment.BottomStart)
@@ -232,7 +245,7 @@ fun rememberUserLocationProvider(): UserLocation {
 class UserLocation(val context: Context) {
     private val fusedLocationClient = LocationServices.getFusedLocationProviderClient(context)
 
-    @RequiresPermission(allOf = [Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION])
+    @RequiresPermission(allOf = [Manifest.permission.ACCESS_FINE_LOCATION])
     fun getLocationUpdates(interval: Long = 5000): Flow<Location> = callbackFlow {
         val locationRequest = LocationRequest.Builder(
             Priority.PRIORITY_HIGH_ACCURACY,
@@ -245,8 +258,8 @@ class UserLocation(val context: Context) {
         // Define the new location callback, send new location through the flow
         val locationCallback = object : LocationCallback() {
             override fun onLocationResult(p0: LocationResult) {
-                p0.lastLocation?.let {
-                    location -> trySend(location)
+                p0.lastLocation?.let { location ->
+                    trySend(location)
                 }
             }
         }
@@ -312,6 +325,13 @@ fun offsetLatLng(center: LatLng, distanceMeters: Double, bearingDegrees: Double)
     )
 
     return LatLng(lat2.toDegrees(), lon2.toDegrees())
+}
+
+fun handleMapClick(latLng: LatLng) {
+    // Handle user selecting a location to fire at
+    if
+    Log.i("Ballzooka", "handleMapClick: $latLng")
+
 }
 
 private fun Double.toRadians() = this * PI / 180.0
