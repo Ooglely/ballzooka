@@ -53,6 +53,7 @@ dependencies {
     implementation(libs.androidx.compose.material3)
     // Maps SDK for Android
     implementation(libs.maps.compose)
+    implementation(libs.maps.compose.widgets)
     implementation(libs.play.services.location)
     implementation(libs.androidx.compose.runtime)
     testImplementation(libs.junit)
