@@ -40,11 +40,12 @@ class BluetoothSensorCharacteristics(
     val battery: BluetoothGattCharacteristic,
     val rpm: BluetoothGattCharacteristic,
     val safety: BluetoothGattCharacteristic,
+    val pitch: BluetoothGattCharacteristic,
 
     val commandFlywheelRPM: BluetoothGattCharacteristic,
-    val commandLoadwheelAngle: BluetoothGattCharacteristic
+    val commandLoadwheelYaw: BluetoothGattCharacteristic
 ) {
-    val values: List<BluetoothGattCharacteristic> = listOf(latitude, heading, longitude, battery, rpm, safety, commandLoadwheelAngle, commandFlywheelRPM)
+    val values: List<BluetoothGattCharacteristic> = listOf(latitude, heading, longitude, battery, rpm, safety, pitch, commandLoadwheelYaw, commandFlywheelRPM)
 }
 
 class BluetoothScanner(
@@ -120,13 +121,13 @@ class BluetoothMessenger(val context: Context, val scope: CoroutineScope) {
             Log.i("Ballzooka", "onConnectionStateChange: $newState");
             when (newState) {
                 BluetoothProfile.STATE_CONNECTED -> {
-                    _connectionState.value = ConnectionStatus.CONNECTED
+//                    _connectionState.value = ConnectionStatus.CONNECTED
                     gatt.discoverServices()
                 }
                 BluetoothProfile.STATE_DISCONNECTED -> {
-                    _connectionState.value = ConnectionStatus.DISCONNECTED
+                    Log.i("Ballzooka", "Handling disconnection")
                     characteristics = null
-                    gatt.close()
+                    disconnect()
                 }
             }
         }
@@ -137,7 +138,6 @@ class BluetoothMessenger(val context: Context, val scope: CoroutineScope) {
 
                 if (service != null) {
                     Log.w("Ballzooka", "onServicesDiscovered: $service")
-                    _connectionState.value = ConnectionStatus.CONNECTED
                     initializeSensorData()
                 } else {
                     _connectionState.value = ConnectionStatus.ERROR
@@ -152,28 +152,38 @@ class BluetoothMessenger(val context: Context, val scope: CoroutineScope) {
             characteristic: BluetoothGattCharacteristic,
             value: ByteArray
         ) {
-            Log.w("Ballzooka", "onCharacteristicChanged: ${value.toHexString(HexFormat.Default)}, ${characteristic.uuid}")
+            Log.w("BallzookaBT", "onCharacteristicChanged: ${value.toHexString(HexFormat.Default)}, ${characteristic.uuid}")
             value.reverse()
             when (characteristic) {
                 characteristics!!.heading -> {
                     val heading: Double = ByteBuffer.wrap(value).double
-                    Log.i("Ballzooka", "heading: $heading")
+                    Log.d("BallzookaBT", "heading: $heading")
                     _telemetry.update { it.copy(heading = heading) }
+                }
+                characteristics!!.pitch -> {
+                    val pitch: Double = ByteBuffer.wrap(value).double
+                    Log.d("BallzookaBT", "pitch: $pitch")
+                    _telemetry.update { it.copy(pitch = pitch) }
                 }
                 characteristics!!.latitude -> {
                     val latitude: Double = ByteBuffer.wrap(value).double
-                    Log.i("Ballzooka", "latitude: $latitude")
+                    Log.d("BallzookaBT", "latitude: $latitude")
                     _telemetry.update { it.copy(latitude = latitude) }
                 }
                 characteristics!!.longitude -> {
                     val longitude: Double = ByteBuffer.wrap(value).double
-                    Log.i("Ballzooka", "longitude: $longitude")
+                    Log.d("BallzookaBT", "longitude: $longitude")
                     _telemetry.update { it.copy(longitude = longitude) }
                 }
                 characteristics!!.safety -> {
                     val safety: Boolean = value[0].toInt() == 1
-                    Log.i("Ballzooka", "safety: $safety")
+                    Log.d("BallzookaBT", "safety: $safety")
                     _telemetry.update { it.copy(safety = safety)}
+                }
+                characteristics!!.rpm -> {
+                    val rpm: Int = ByteBuffer.wrap(value).int
+                    Log.w("Ballzooka", "rpm: $rpm")
+                    _telemetry.update { it.copy(rpm = rpm) }
                 }
             }
         }
@@ -208,8 +218,9 @@ class BluetoothMessenger(val context: Context, val scope: CoroutineScope) {
             battery = gatt!!.getService(SENSOR_SERVICE_UUID).getCharacteristic(BATTERY_CHARACTERISTIC_UUID),
             rpm = gatt!!.getService(SENSOR_SERVICE_UUID).getCharacteristic(RPM_CHARACTERISTIC_UUID),
             safety = gatt!!.getService(SENSOR_SERVICE_UUID).getCharacteristic(SAFETY_CHARACTERISTIC_UUID),
+            pitch = gatt!!.getService(SENSOR_SERVICE_UUID).getCharacteristic(PITCH_CHARACTERISTIC_UUID),
             commandFlywheelRPM = gatt!!.getService(SENSOR_SERVICE_UUID).getCharacteristic(COMMAND_FLYWHEEL_RPM_CHARACTERISTIC_UUID),
-            commandLoadwheelAngle = gatt!!.getService(SENSOR_SERVICE_UUID).getCharacteristic(COMMAND_LOADWHEEL_ANGLE_CHARACTERISTIC_UUID)
+            commandLoadwheelYaw = gatt!!.getService(SENSOR_SERVICE_UUID).getCharacteristic(COMMAND_LOADWHEEL_YAW_CHARACTERISTIC_UUID)
         )
 
         Log.w("Ballzooka", "$characteristics")
@@ -227,7 +238,7 @@ class BluetoothMessenger(val context: Context, val scope: CoroutineScope) {
                             BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
                         )
                         while (status != BluetoothGatt.GATT_SUCCESS) {
-                            delay(1_000)
+                            delay(100)
                             status = gatt.writeDescriptor(
                                 descriptor,
                                 BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
@@ -238,6 +249,7 @@ class BluetoothMessenger(val context: Context, val scope: CoroutineScope) {
                     }
                     Log.i("Ballzooka", "${characteristic.uuid} enabled")
                 }
+                _connectionState.value = ConnectionStatus.CONNECTED
             } ?: run {
                 Log.w("Ballzooka", "BluetoothGatt not initialized")
             }
@@ -260,11 +272,21 @@ class BluetoothMessenger(val context: Context, val scope: CoroutineScope) {
     }
 
     fun disconnect() {
+        _connectionState.value = ConnectionStatus.DISCONNECTED
         gatt?.disconnect()
     }
 
     fun send(characteristic: BluetoothGattCharacteristic, data: ByteArray) {
-        gatt?.writeCharacteristic(characteristic, data, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
+        // TODO: add timeout
+        var status = gatt?.writeCharacteristic(characteristic, data, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
+        while (status != BluetoothGatt.GATT_SUCCESS) {
+            Thread.sleep(1000)
+            status = gatt?.writeCharacteristic(
+                characteristic,
+                data,
+                BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+            )
+        }
     }
 
     fun read(characteristic: BluetoothGattCharacteristic) {
