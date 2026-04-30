@@ -8,6 +8,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -19,6 +20,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -26,8 +28,11 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
+import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.google.android.gms.maps.model.LatLng
 import kotlinx.coroutines.launch
 
 val REQUIRED_PERMISSIONS = arrayOf(
@@ -37,10 +42,10 @@ val REQUIRED_PERMISSIONS = arrayOf(
     Manifest.permission.BLUETOOTH_ADVERTISE
 )
 
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        WindowCompat.enableEdgeToEdge(window)
 
         setContent {
             // Ask for permissions
@@ -59,12 +64,26 @@ class MainActivity : ComponentActivity() {
             // Start scanning for Ballzooka
             val viewModel: BallzookaViewModel by viewModels()
 //            viewModel.findAndConnect()
+            val context = LocalContext.current
 
-            Box(modifier = Modifier.systemBarsPadding()) {
-                Column {
-                    Toolbar()
+            Box(modifier = Modifier.background(Color.Black)) {
+                Box(modifier = Modifier.systemBarsPadding()) {
+                    Column {
+                        Toolbar()
 //                    StateButtons(viewModel)
-                    MapDisplay()
+                        MapDisplay()
+                    }
+                }
+            }
+
+            // Collect notifications from the view model
+            LaunchedEffect(Unit) {
+                viewModel.events.collect { message ->
+                    android.app.AlertDialog.Builder(context)
+                        .setTitle("Error")
+                        .setMessage(message)
+                        .setPositiveButton("OK", null)
+                        .show()
                 }
             }
         }
@@ -89,7 +108,7 @@ fun StateButtons(viewModel: BallzookaViewModel = viewModel()) {
         Row(modifier = Modifier.padding(vertical = 8.dp)) {
             Button(
                 onClick = {
-                    viewModel.send(viewModel.messenger.characteristics!!.commandLoadwheelAngle, byteArrayOf(1.toByte()))
+                    viewModel.send(viewModel.messenger.characteristics!!.commandLoadwheelYaw, byteArrayOf(1.toByte()))
                 },
                 modifier = Modifier.height(30.dp)
             ) {
@@ -102,6 +121,14 @@ fun StateButtons(viewModel: BallzookaViewModel = viewModel()) {
                 modifier = Modifier.height(30.dp)
             ) {
                 Text("Flywheel")
+            }
+            Button(
+                onClick = {
+                    calculateAngles(LatLng(0.0, 0.0), LatLng(0.0, 0.00001))
+                },
+                modifier = Modifier.height(30.dp)
+            ) {
+                Text("Calculate")
             }
         }
     }

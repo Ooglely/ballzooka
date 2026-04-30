@@ -8,11 +8,13 @@ import android.util.Log
 import androidx.annotation.RequiresPermission
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.PersonalInjury
 import androidx.compose.material3.AlertDialog
@@ -58,6 +60,7 @@ import com.google.maps.android.compose.Polygon
 import com.google.maps.android.compose.rememberCameraPositionState
 import com.google.maps.android.compose.rememberMarkerState
 import com.google.maps.android.compose.rememberUpdatedMarkerState
+import com.google.maps.android.compose.widgets.DisappearingScaleBar
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -85,11 +88,15 @@ fun MapDisplay(viewModel: BallzookaViewModel = viewModel()) {
     val userLocationProvider = rememberUserLocationProvider()
     val locationUpdates = userLocationProvider.getLocationUpdates()
     var currentLocation by remember { mutableStateOf<Location?>(null) }
-    val cannonLocation = LatLng(telemetry.latitude, telemetry.longitude)
     val cannonBearing = telemetry.heading
+
     val userLocation = LatLng(currentLocation?.latitude ?: 0.0, currentLocation?.longitude ?: 0.0)
+    val cannonLocation = remember(telemetry.latitude, telemetry.longitude) { LatLng(telemetry.latitude, telemetry.longitude) }
 
     val userMarkerState = rememberUpdatedMarkerState(position = userLocation)
+    val cannonMarkerState = rememberUpdatedMarkerState(position = cannonLocation)
+    val selectionMarkerState = rememberUpdatedMarkerState(position = telemetry.selection)
+
 
     val permissionsState = rememberMultiplePermissionsState(
         permissions = listOf(
@@ -100,12 +107,6 @@ fun MapDisplay(viewModel: BallzookaViewModel = viewModel()) {
             Manifest.permission.BLUETOOTH_CONNECT
         )
     )
-
-    // 37.956547, -91.772350
-    val markerPosition = cannonLocation.let {
-        LatLng(it.latitude, it.longitude)
-    } ?: LatLng(37.956547, -91.772350)
-
 
     val cameraPositionState = rememberCameraPositionState {
         position = CameraPosition.fromLatLngZoom(LatLng(37.956547, -91.772350), 20f)
@@ -128,112 +129,127 @@ fun MapDisplay(viewModel: BallzookaViewModel = viewModel()) {
         createConePolygon(cannonLocation, cannonBearing.toFloat(), 30f, 50.0)
     }
 
-
-    Box(modifier = Modifier.fillMaxSize()) {
-        GoogleMap(
-            modifier = Modifier.fillMaxSize(),
-            cameraPositionState = cameraPositionState,
-            properties = mapProperties,
-            uiSettings = MapUiSettings(
-                myLocationButtonEnabled = true
-            ),
-            onMapLongClick = { latLng ->
-                handleMapClick(latLng)
-            }
-        ) {
-            Marker(
-                state = userMarkerState,
-                title = "User Location",
-                snippet = "(${userLocation.latitude}, ${userLocation.longitude})"
-            )
-            if (currentLocation != null && uiState.currentState != AppState.START) {
-                Marker(
-                    state = MarkerState(position = cannonLocation),
-                    title = "Cannon Location",
-                    snippet = "(${cannonLocation.latitude}, ${cannonLocation.longitude})"
-                )
-
-                Circle(
-                    center = markerPosition, // Change to cannon position
-                    radius = 50.0,
-                    fillColor = Color(red = 255, green = 255, blue = 158, alpha = 100)
-                )
-                Polygon(
-                    points = conePoints,
-                    fillColor = Color(red = 200, green = 0, blue = 0, alpha = 100),
-                    strokeColor = Color(red = 255, green = 0, blue = 0, alpha = 255),
-                    strokeWidth = 2f
-                )
-            }
+    Row {
+        if (uiState.currentState == AppState.IDLE && telemetry.selection != LatLng(0.0, 0.0)) {
+            PitchSlider()
         }
-
-        if (uiState.currentState != AppState.START) {
-            if (permissionsState.allPermissionsGranted) {
-                Text(
-                    text = "Cannon: (${"%.7f".format(cannonLocation.latitude)}, ${"%.7f".format(cannonLocation.longitude)}) User: (${userLocation.latitude}, ${userLocation.longitude})",
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(top = 16.dp)
-                        .background(
-                            color = Color.White.copy(alpha = 0.8f),
-                            shape = RoundedCornerShape(8.dp)
-                        )
-                        .padding(horizontal = 12.dp, vertical = 6.dp)
+        Box(modifier = Modifier.fillMaxSize()) {
+            GoogleMap(
+                modifier = Modifier.fillMaxSize(),
+                cameraPositionState = cameraPositionState,
+                properties = mapProperties,
+                uiSettings = MapUiSettings(
+                    myLocationButtonEnabled = false,
+                    mapToolbarEnabled = false
+                ),
+                onMapLongClick = { latLng ->
+                    Log.i("Ballzooka", "handleMapClick: $latLng")
+                    viewModel.updateSelectionLocation(latLng)
+                }
+            ) {
+                Marker(
+                    state = userMarkerState,
+                    title = "User Location",
+                    snippet = "(${userLocation.latitude}, ${userLocation.longitude})"
                 )
-            } else {
-                Button(
-                    onClick = { permissionsState.launchMultiplePermissionRequest() },
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(top = 16.dp)
-                ) {
-                    Text(text = "Request Permissions")
+//            if (cannonLocation != LatLng(0.0, 0.0) && uiState.currentState != AppState.START) {
+                if (true) {
+                    Marker(
+                        state = cannonMarkerState,
+                        title = "Cannon Location",
+                        snippet = "(${cannonLocation.latitude}, ${cannonLocation.longitude})"
+                    )
+                    Marker(
+                        state = selectionMarkerState,
+                        title = "Selected Location",
+//                    icon = Icons.Default.MyLocation,
+                        snippet = "Selected (${"%.7f".format(telemetry.selection.latitude)}, ${"%.7f".format(telemetry.selection.longitude)})",
+                        visible = (telemetry.selection != LatLng(0.0, 0.0))
+                    )
+                    Circle(
+                        center = cannonLocation,
+                        radius = 50.0,
+                        fillColor = Color(red = 255, green = 255, blue = 158, alpha = 100)
+                    )
+                    Polygon(
+                        points = conePoints,
+                        fillColor = Color(red = 200, green = 0, blue = 0, alpha = 100),
+                        strokeColor = Color(red = 255, green = 0, blue = 0, alpha = 255),
+                        strokeWidth = 2f
+                    )
                 }
             }
 
-            FloatingActionButton(
-                onClick = { scope.launch { cameraPositionState.animate(CameraUpdateFactory.newLatLng(cannonLocation), 1000) } },
-                elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 6.dp),
-                modifier = Modifier.size(56.dp)
-                    .align(Alignment.BottomStart)
-                    .padding(16.dp)
-                    .background(Color.White.copy(alpha = 0.8f))
-            ) {
-                Icon(
-                    imageVector = Icons.Default.MyLocation,
-                    contentDescription = "Go to my location"
+            if (uiState.currentState != AppState.START) {
+                if (permissionsState.allPermissionsGranted) {
+                    Text(
+                        text = "Cannon: (${"%.7f".format(cannonLocation.latitude)}, ${"%.7f".format(cannonLocation.longitude)}) User: (${userLocation.latitude}, ${userLocation.longitude})",
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(top = 16.dp)
+                            .background(
+                                color = Color.White.copy(alpha = 0.8f),
+                                shape = RoundedCornerShape(8.dp)
+                            )
+                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                    )
+                } else {
+                    Button(
+                        onClick = { permissionsState.launchMultiplePermissionRequest() },
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(top = 16.dp)
+                    ) {
+                        Text(text = "Request Permissions")
+                    }
+                }
+
+                FloatingActionButton(
+                    onClick = { scope.launch { cameraPositionState.animate(CameraUpdateFactory.newLatLng(cannonLocation), 1000) } },
+                    elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 6.dp),
+                    modifier = Modifier.size(56.dp)
+                        .align(Alignment.BottomStart)
+                        .padding(16.dp)
+                        .background(Color.White.copy(alpha = 0.8f))
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.LocationOn,
+                        contentDescription = "Go to my location"
+                    )
+                }
+            }
+
+            DisappearingScaleBar(
+                modifier = Modifier
+                    .padding(top = 5.dp, end = 15.dp)
+                    .align(Alignment.TopStart),
+                cameraPositionState = cameraPositionState
+            )
+
+            if (uiState.currentState == AppState.SAFETY) {
+                AlertDialog(
+                    icon = {
+                        Icon(Icons.Filled.PersonalInjury, contentDescription = "Example Icon")
+                    },
+                    title = {
+                        Text(text = "Safety Check")
+                    },
+                    text = {
+                        Text(
+                            text = "An object was detected in front of the cannon. " +
+                                    "The cannon will spin down now.\n\n" +
+                                    "The cannon will not allow for firing if there is something in the way to protect users. " +
+                                    "This dialog will close once the obstruction is cleared."
+                        )
+                    },
+                    onDismissRequest = {},
+                    confirmButton = {},
+                    dismissButton = {}
                 )
             }
         }
-
-        if (uiState.currentState == AppState.SAFETY) {
-            AlertDialog(
-                icon = {
-                    Icon(Icons.Filled.PersonalInjury, contentDescription = "Example Icon")
-                },
-                title = {
-                    Text(text = "Safety Check")
-                },
-                text = {
-                    Text(
-                        text = "An object was detected in front of the cannon. " +
-                                "The cannon will spin down now.\n\n" +
-                                "The cannon will not allow for firing if there is something in the way to protect users. " +
-                                "This dialog will close once the obstruction is cleared."
-                    )
-                },
-                onDismissRequest = {},
-                confirmButton = {},
-                dismissButton = {}
-            )
-        }
     }
-}
 
-@Preview(showBackground = true)
-@Composable
-fun MapPreview() {
-//    MapDisplay()
 }
 
 @Composable
@@ -242,7 +258,7 @@ fun rememberUserLocationProvider(): UserLocation {
     return remember { UserLocation(context) }
 }
 
-class UserLocation(val context: Context) {
+class UserLocation(context: Context) {
     private val fusedLocationClient = LocationServices.getFusedLocationProviderClient(context)
 
     @RequiresPermission(allOf = [Manifest.permission.ACCESS_FINE_LOCATION])
@@ -325,13 +341,6 @@ fun offsetLatLng(center: LatLng, distanceMeters: Double, bearingDegrees: Double)
     )
 
     return LatLng(lat2.toDegrees(), lon2.toDegrees())
-}
-
-fun handleMapClick(latLng: LatLng) {
-    // Handle user selecting a location to fire at
-    if
-    Log.i("Ballzooka", "handleMapClick: $latLng")
-
 }
 
 private fun Double.toRadians() = this * PI / 180.0
