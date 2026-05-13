@@ -78,10 +78,10 @@ class MainActivity : FragmentActivity() {
 
             // Collect notifications from the view model
             LaunchedEffect(Unit) {
-                viewModel.events.collect { message ->
+                viewModel.events.collect { event ->
                     android.app.AlertDialog.Builder(context)
-                        .setTitle("Error")
-                        .setMessage(message)
+                        .setTitle(event.title)
+                        .setMessage(event.message)
                         .setPositiveButton("OK", null)
                         .show()
                 }

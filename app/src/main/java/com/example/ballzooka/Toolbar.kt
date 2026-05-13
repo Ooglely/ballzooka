@@ -35,6 +35,7 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
@@ -102,9 +103,9 @@ fun Toolbar(viewModel: BallzookaViewModel = viewModel()) {
                     )
                 }
                 Column(modifier = Modifier.padding(horizontal = 16.dp)) {
-                    Text(text = "Wind: 7 mph 69°", color = Color.White, fontSize = 16.sp)
+                    Text(text = "Wind: 7 mph 67°", color = Color.White, fontSize = 16.sp)
                     Text(
-                        text = "Motors: ${telemetry.rpm} RPM",
+                        text = "Motors: ${telemetry.leftrpm} | ${telemetry.rightrpm} RPM",
                         color = Color.White,
                         fontSize = 16.sp
                     )
@@ -146,9 +147,9 @@ fun StateControls(viewModel: BallzookaViewModel = viewModel()) {
                             viewModel.arm(angles)
                             viewModel.changeState(AppState.AIMING)
                         } catch (_: IllegalArgumentException) {
-                            viewModel.addEvent("The distance between the cannon and target is too large (>100m). Please select a new location.")
+                            viewModel.addEvent(Event("The distance between the cannon and target is too large (>100m). Please select a new location.", "Error"))
                         } catch (e: RuntimeException) {
-                            viewModel.addEvent(e.message.toString())
+                            viewModel.addEvent(Event(e.message.toString(), "Error"))
                         }
                     }
                 }, modifier = Modifier.height(48.dp), colors = NormalButtonColors) {
@@ -160,7 +161,16 @@ fun StateControls(viewModel: BallzookaViewModel = viewModel()) {
                 }
             }
             AppState.AIMING -> {
-                Text(text = "Cannon is aiming towards location...", color = Color.White, fontSize = 20.sp)
+                Button(onClick = {
+                    viewModel.disarm()
+                    viewModel.changeState(AppState.IDLE)
+                }, modifier = Modifier.height(48.dp), colors = NormalButtonColors) {
+                    Text("Cancel", fontSize = 24.sp)
+                }
+                Spacer(modifier = Modifier.width(16.dp))
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(text = "Cannon is aiming towards location...", color = Color.White, fontSize = 14.sp, textAlign = TextAlign.Center)
+                }
             }
             AppState.ARMED -> {
                 Button(onClick = {

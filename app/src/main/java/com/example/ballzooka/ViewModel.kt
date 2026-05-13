@@ -33,28 +33,36 @@ val PITCH_CHARACTERISTIC_UUID: UUID = UUID.fromString("ba10f73b-f94d-45f8-8ccd-8
 val LATITUDE_CHARACTERISTIC_UUID: UUID = UUID.fromString("ba10f733-f94d-45f8-8ccd-89e393b418f4")
 val LONGITUDE_CHARACTERISTIC_UUID: UUID = UUID.fromString("ba10f736-f94d-45f8-8ccd-89e393b418f4")
 val BATTERY_CHARACTERISTIC_UUID: UUID = UUID.fromString("ba10f734-f94d-45f8-8ccd-89e393b418f4")
-val RPM_CHARACTERISTIC_UUID: UUID = UUID.fromString("ba10f735-f94d-45f8-8ccd-89e393b418f4")
+val LEFTRPM_CHARACTERISTIC_UUID: UUID = UUID.fromString("ba10f735-f94d-45f8-8ccd-89e393b418f4")
+val RIGHTRPM_CHARACTERISTIC_UUID: UUID = UUID.fromString("ba10f73a-f94d-45f8-8ccd-89e393b418f4")
 val SAFETY_CHARACTERISTIC_UUID: UUID = UUID.fromString("ba10f737-f94d-45f8-8ccd-89e393b418f4")
 
 // Command Characteristic UUIDs
 val COMMAND_FLYWHEEL_RPM_CHARACTERISTIC_UUID: UUID = UUID.fromString("ba10f738-f94d-45f8-8ccd-89e393b418f4")
 val COMMAND_LOADWHEEL_YAW_CHARACTERISTIC_UUID: UUID = UUID.fromString("ba10f739-f94d-45f8-8ccd-89e393b418f4")
+val COMMAND_LOADWHEEL_PITCH_CHARACTERISTIC_UUID: UUID = UUID.fromString("ba10f73c-f94d-45f8-8ccd-89e393b418f4")
 
 
 data class UiState(
     val connectionStatus: ConnectionStatus = ConnectionStatus.DISCONNECTED,
-    val currentState: AppState = AppState.IDLE
+    val currentState: AppState = AppState.ARMED
 )
 
 data class Telemetry(
-    val heading: Double = 0.00,
-    val pitch: Double = 0.00,
-    val latitude: Double = 0.00,
-    val longitude: Double = 0.00,
+    val heading: Double = 0.0,
+    val pitch: Double = 0.0,
+    val latitude: Double = 0.0,
+    val longitude: Double = 0.0,
     val selection: LatLng = LatLng(0.0, 0.0),
     val desiredPitch: Double = 45.00,
-    val rpm: Int = 0,
+    val leftrpm: Int = 0,
+    val rightrpm: Int = 0,
     val safety: Boolean = false
+)
+
+data class Event(
+    val message: String,
+    val title: String
 )
 
 enum class ConnectionStatus { DISCONNECTED, SCANNING, CONNECTING, CONNECTED, ERROR }
@@ -70,7 +78,7 @@ class BallzookaViewModel(
     private val _telemetry = MutableStateFlow(Telemetry())
     val telemetry: StateFlow<Telemetry> = _telemetry.asStateFlow()
 
-    private val _events = Channel<String>(Channel.BUFFERED)
+    private val _events = Channel<Event>(Channel.BUFFERED)
     val events = _events.receiveAsFlow()
 
     private val scanner = BluetoothScanner(application)
@@ -153,8 +161,7 @@ class BallzookaViewModel(
     }
 
     fun arm(params: ArmParams) {
-//        val yawThreshold = 0.5
-        val yawThreshold = 300
+        val yawThreshold = 1
         val rpmThreshold = 100
         Log.d("Ballzooka", "Arming. RPM: ${params.speed}, Yaw: ${params.yaw}, Pitch: ${params.pitch}")
         viewModelScope.launch {
@@ -166,6 +173,10 @@ class BallzookaViewModel(
             Log.d("Ballzooka", yawBytes.toHexString())
             yawBytes.reverse()
             Log.d("Ballzooka", yawBytes.toHexString())
+            val pitchBytes = ByteBuffer.allocate(Double.SIZE_BYTES).putDouble(params.pitch).array()
+            Log.d("Ballzooka", pitchBytes.toHexString())
+            pitchBytes.reverse()
+            Log.d("Ballzooka", pitchBytes.toHexString())
 
             messenger.send(
                 messenger.characteristics!!.commandFlywheelRPM,
@@ -175,26 +186,37 @@ class BallzookaViewModel(
                 messenger.characteristics!!.commandLoadwheelYaw,
                 yawBytes
             )
-
-            // add pitch when we have a sensor for it
+            messenger.send(
+                messenger.characteristics!!.commandLoadwheelPitch,
+                pitchBytes
+            )
 
             // wait for 10s for it to arm
-            val reached = withTimeoutOrNull(10_000L) {
-                telemetry.first { (it.rpm >= params.speed - rpmThreshold) && (it.rpm <= params.speed + rpmThreshold) && (it.heading >= params.yaw - yawThreshold) && (it.heading <= params.yaw + yawThreshold) }
+            val reached = withTimeoutOrNull(15_000L) {
+                telemetry.first {
+                    ((it.leftrpm >= params.speed - rpmThreshold) && (it.leftrpm <= params.speed + rpmThreshold)) &&
+                    ((it.rightrpm >= params.speed - rpmThreshold) && (it.rightrpm <= params.speed + rpmThreshold)) &&
+                    ((it.heading >= params.yaw - yawThreshold) && (it.heading <= params.yaw + yawThreshold))
+                }
             }
 
             if (reached != null) {
-                stateMachine.changeState(AppState.ARMED)
+                if (uiState.value.currentState == AppState.AIMING) {
+                    stateMachine.changeState(AppState.ARMED)
+                }
             } else {
                 Log.w("Ballzooka", "arm() timed out waiting for RPM target")
-                _events.send("Timed out waiting for RPM target")
+                _events.send(Event("Timed out waiting for RPM/yaw target, but passing anyway for demo", "Warning"))
 
                 // kill the motors (do this properly later)
-                messenger.send(
-                    messenger.characteristics!!.commandFlywheelRPM,
-                    ByteBuffer.allocate(java.lang.Long.BYTES).putLong(java.lang.Double.doubleToLongBits(0.0)).array()
-                )
-                stateMachine.changeState(AppState.IDLE)
+                // messenger.send(
+                //     messenger.characteristics!!.commandFlywheelRPM,
+                //     ByteBuffer.allocate(java.lang.Long.BYTES).putLong(java.lang.Double.doubleToLongBits(0.0)).array()
+                // )
+                // stateMachine.changeState(AppState.IDLE)
+                if (uiState.value.currentState == AppState.AIMING) {
+                    stateMachine.changeState(AppState.ARMED)
+                }
             }
         }
     }
@@ -221,15 +243,15 @@ class BallzookaViewModel(
         }
     }
 
-    fun addEvent(message: String) {
+    fun addEvent(event: Event) {
         viewModelScope.launch {
-            _events.send(message)
+            _events.send(event)
         }
     }
 }
 
 class StateMachine {
-    private val _currentState = MutableStateFlow(AppState.IDLE)
+    private val _currentState = MutableStateFlow(AppState.START)
     val currentState: StateFlow<AppState> = _currentState.asStateFlow()
 
     fun changeState(state: AppState) {

@@ -113,7 +113,7 @@ fun calculateAngles(cannon: LatLng, target: LatLng, pitch: Double = 45.0): ArmPa
     val launchConditions = findLaunchVelocity(distance, pitch)
     val rpm = (launchConditions.velocity * 60 * 3.28 * 12) / (2 * PI * 3)
 
-    if (rpm > 4000) {
+    if (rpm > 5000) {
         throw RuntimeException("The RPM required (${"%.2f".format(rpm)}) is too high. Please lower your angle or select a closer point.")
     }
 

@@ -38,14 +38,16 @@ class BluetoothSensorCharacteristics(
     val latitude: BluetoothGattCharacteristic,
     val longitude: BluetoothGattCharacteristic,
     val battery: BluetoothGattCharacteristic,
-    val rpm: BluetoothGattCharacteristic,
+    val leftrpm: BluetoothGattCharacteristic,
+    val rightrpm: BluetoothGattCharacteristic,
     val safety: BluetoothGattCharacteristic,
     val pitch: BluetoothGattCharacteristic,
 
     val commandFlywheelRPM: BluetoothGattCharacteristic,
-    val commandLoadwheelYaw: BluetoothGattCharacteristic
+    val commandLoadwheelYaw: BluetoothGattCharacteristic,
+    val commandLoadwheelPitch: BluetoothGattCharacteristic
 ) {
-    val values: List<BluetoothGattCharacteristic> = listOf(latitude, heading, longitude, battery, rpm, safety, pitch, commandLoadwheelYaw, commandFlywheelRPM)
+    val values: List<BluetoothGattCharacteristic> = listOf(latitude, heading, longitude, battery, leftrpm, rightrpm, safety, pitch, commandLoadwheelYaw, commandFlywheelRPM, commandLoadwheelPitch)
 }
 
 class BluetoothScanner(
@@ -180,10 +182,19 @@ class BluetoothMessenger(val context: Context, val scope: CoroutineScope) {
                     Log.d("BallzookaBT", "safety: $safety")
                     _telemetry.update { it.copy(safety = safety)}
                 }
-                characteristics!!.rpm -> {
+                characteristics!!.leftrpm -> {
                     val rpm: Int = ByteBuffer.wrap(value).int
-                    Log.w("Ballzooka", "rpm: $rpm")
-                    _telemetry.update { it.copy(rpm = rpm) }
+                    if (rpm < 10000) {
+                        Log.w("Ballzooka", "leftrpm: $rpm")
+                        _telemetry.update { it.copy(leftrpm = rpm) }
+                    }
+                }
+                characteristics!!.rightrpm -> {
+                    val rpm: Int = ByteBuffer.wrap(value).int
+                    if (rpm < 10000) {
+                        Log.w("Ballzooka", "rightrpm: $rpm")
+                        _telemetry.update { it.copy(rightrpm = rpm) }
+                    }
                 }
             }
         }
@@ -216,11 +227,13 @@ class BluetoothMessenger(val context: Context, val scope: CoroutineScope) {
             latitude = gatt!!.getService(SENSOR_SERVICE_UUID).getCharacteristic(LATITUDE_CHARACTERISTIC_UUID),
             longitude = gatt!!.getService(SENSOR_SERVICE_UUID).getCharacteristic(LONGITUDE_CHARACTERISTIC_UUID),
             battery = gatt!!.getService(SENSOR_SERVICE_UUID).getCharacteristic(BATTERY_CHARACTERISTIC_UUID),
-            rpm = gatt!!.getService(SENSOR_SERVICE_UUID).getCharacteristic(RPM_CHARACTERISTIC_UUID),
+            leftrpm = gatt!!.getService(SENSOR_SERVICE_UUID).getCharacteristic(LEFTRPM_CHARACTERISTIC_UUID),
+            rightrpm = gatt!!.getService(SENSOR_SERVICE_UUID).getCharacteristic(RIGHTRPM_CHARACTERISTIC_UUID),
             safety = gatt!!.getService(SENSOR_SERVICE_UUID).getCharacteristic(SAFETY_CHARACTERISTIC_UUID),
             pitch = gatt!!.getService(SENSOR_SERVICE_UUID).getCharacteristic(PITCH_CHARACTERISTIC_UUID),
             commandFlywheelRPM = gatt!!.getService(SENSOR_SERVICE_UUID).getCharacteristic(COMMAND_FLYWHEEL_RPM_CHARACTERISTIC_UUID),
-            commandLoadwheelYaw = gatt!!.getService(SENSOR_SERVICE_UUID).getCharacteristic(COMMAND_LOADWHEEL_YAW_CHARACTERISTIC_UUID)
+            commandLoadwheelYaw = gatt!!.getService(SENSOR_SERVICE_UUID).getCharacteristic(COMMAND_LOADWHEEL_YAW_CHARACTERISTIC_UUID),
+            commandLoadwheelPitch = gatt!!.getService(SENSOR_SERVICE_UUID).getCharacteristic(COMMAND_LOADWHEEL_PITCH_CHARACTERISTIC_UUID)
         )
 
         Log.w("Ballzooka", "$characteristics")
@@ -286,12 +299,6 @@ class BluetoothMessenger(val context: Context, val scope: CoroutineScope) {
                 data,
                 BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
             )
-        }
-    }
-
-    fun read(characteristic: BluetoothGattCharacteristic) {
-        characteristic.let { char ->
-            gatt?.readCharacteristic(char)
         }
     }
 }
