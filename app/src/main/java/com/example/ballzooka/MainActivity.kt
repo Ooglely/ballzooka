@@ -48,7 +48,7 @@ class MainActivity : FragmentActivity() {
         WindowCompat.enableEdgeToEdge(window)
 
         setContent {
-            // Ask for permissions
+            // Ask for permissions if we don't have them yet
             val missingPermissions = REQUIRED_PERMISSIONS.filter { permission ->
                 ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED
             }
@@ -70,13 +70,12 @@ class MainActivity : FragmentActivity() {
                 Box(modifier = Modifier.systemBarsPadding()) {
                     Column {
                         Toolbar()
-//                    StateButtons(viewModel)
                         MapDisplay()
                     }
                 }
             }
 
-            // Collect notifications from the view model
+            // Collect notifications/events from the view model
             LaunchedEffect(Unit) {
                 viewModel.events.collect { event ->
                     android.app.AlertDialog.Builder(context)
@@ -96,7 +95,6 @@ fun AppPreview() {
     Box(modifier = Modifier.systemBarsPadding()) {
         Column {
             Toolbar()
-//            MapDisplay()
         }
     }
 }

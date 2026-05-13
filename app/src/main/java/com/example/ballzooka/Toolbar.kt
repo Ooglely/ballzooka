@@ -63,6 +63,7 @@ val DangerousButtonColors = ButtonColors(
 
 @Composable
 fun Toolbar(viewModel: BallzookaViewModel = viewModel()) {
+    // Toolbar at the top of the screen with the current state of the app
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val telemetry by viewModel.telemetry.collectAsStateWithLifecycle()
 
@@ -119,6 +120,7 @@ fun Toolbar(viewModel: BallzookaViewModel = viewModel()) {
 
 @Composable
 fun StateControls(viewModel: BallzookaViewModel = viewModel()) {
+    // Controls based on the current state of the app
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val telemetry by viewModel.telemetry.collectAsStateWithLifecycle()
 
@@ -127,6 +129,7 @@ fun StateControls(viewModel: BallzookaViewModel = viewModel()) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         when (uiState.currentState) {
+            // switch statement for each possible state
             AppState.START -> {
                 Text(
                     text = "Connection State: ${uiState.connectionStatus.name}",
@@ -134,6 +137,7 @@ fun StateControls(viewModel: BallzookaViewModel = viewModel()) {
                     modifier = Modifier.padding(horizontal = 8.dp),
                     fontSize = 24.sp
                 )
+                // this help button was never implemented lol
                 Button(onClick = {}, colors = NormalButtonColors) {
                     Text("Help", fontSize = 24.sp)
                 }
@@ -199,6 +203,7 @@ fun StateControls(viewModel: BallzookaViewModel = viewModel()) {
 
 @Composable
 fun PitchSlider(viewModel: BallzookaViewModel = viewModel()) {
+    // The pitch slider on the side of the screen whenever a location is selected
     val telemetry by viewModel.telemetry.collectAsStateWithLifecycle()
     Box(modifier = Modifier.fillMaxHeight().background(Color.Black)) {
         Column(modifier = Modifier.width(50.dp).background(Color.Black).padding(all = 10.dp), horizontalAlignment = Alignment.CenterHorizontally) {

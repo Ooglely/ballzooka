@@ -17,6 +17,8 @@ class LaunchConditions(
     val velocity: Double
 )
 
+// Wind class to hold wind data
+// Not implemented yet for correction
 class Wind(
     val heading: Double = 0.0,
     val speed: Double = 0.0,
@@ -33,6 +35,8 @@ class ArmParams(
 )
 
 fun findLaunchVelocity(distance: Float, pitch: Double): LaunchConditions {
+    // All this math is taken from the Tentative Code/Ballistics Math Model code in the drive
+
     val ballMass = 0.058 // in kg
     val g = 9.807 // gravity
     val Cd = 0.56 // drag coefficent of the ball

@@ -25,8 +25,8 @@ import kotlinx.coroutines.withTimeoutOrNull
 import java.nio.ByteBuffer
 import java.util.UUID
 
+// All constant UUIDs for use with Bluetooth LE
 val SENSOR_SERVICE_UUID: UUID = UUID.fromString("ba10f731-f94d-45f8-8ccd-89e393b418f4")
-//val SENSOR_SERVICE_UUID: UUID = UUID.fromString("ba110000-f94d-45f8-8ccd-89e393b418f4")
 
 val HEADING_CHARACTERISTIC_UUID: UUID = UUID.fromString("ba10f732-f94d-45f8-8ccd-89e393b418f4")
 val PITCH_CHARACTERISTIC_UUID: UUID = UUID.fromString("ba10f73b-f94d-45f8-8ccd-89e393b418f4")
@@ -44,11 +44,13 @@ val COMMAND_LOADWHEEL_PITCH_CHARACTERISTIC_UUID: UUID = UUID.fromString("ba10f73
 
 
 data class UiState(
+    // Contains the current connection state and general app state. Is used to both pass updates from the state machine to the UI, and is used to change the connection status whenever the Bluetooth connection state changes.
     val connectionStatus: ConnectionStatus = ConnectionStatus.DISCONNECTED,
     val currentState: AppState = AppState.ARMED
 )
 
 data class Telemetry(
+    // Contains all telemetry data received from either the Arduino and its sensors or from user interaction.
     val heading: Double = 0.0,
     val pitch: Double = 0.0,
     val latitude: Double = 0.0,
@@ -89,7 +91,7 @@ class BallzookaViewModel(
     private var heartbeatJob: Job? = null
 
     init {
-        // Observe Bluetooth connection
+        // Observe Bluetooth connection, and change connectionStatus based on it
         viewModelScope.launch {
             messenger.connectionState.collect { status ->
                 Log.i("Ballzooka", "Connection state: $status")
@@ -102,6 +104,8 @@ class BallzookaViewModel(
             }
         }
 
+        // Observe telemetry, go into safety state and disarm if safety check is on
+        // Also switches back automatically when safety check turns back off
         viewModelScope.launch {
             messenger.telemetry.collect { telemetry ->
                 if (telemetry.safety && uiState.value.currentState != AppState.SAFETY) {
@@ -114,13 +118,14 @@ class BallzookaViewModel(
             }
         }
 
-        // Observe state machine
+        // Observe state machine and update uiState accordingly
         viewModelScope.launch {
             stateMachine.currentState.collect { state ->
                 _uiState.update { it.copy(currentState = state) }
             }
         }
 
+        // Heartbeat job to make sure the bluetooth connection is still alive and disconnect and attempt a reconnection if it disconnects
         heartbeatJob = viewModelScope.launch {
             while (true) {
                 delay(3_000)
@@ -134,6 +139,7 @@ class BallzookaViewModel(
     }
 
     fun findAndConnect() {
+        // Find and connect to the Ballzooka Arduino
         viewModelScope.launch {
             while (!scanner.bluetoothAdapter.isEnabled) {
                 delay(1_000)
@@ -153,30 +159,31 @@ class BallzookaViewModel(
     }
 
     fun updateSelectionLocation(latLng: LatLng) {
+        // Update the selection location in the telemetry
         _telemetry.update { it.copy(selection = latLng) }
     }
 
     fun updateDesiredPitch(pitch: Double) {
+        // Update the desired pitch in the telemetry
         _telemetry.update { it.copy(desiredPitch = pitch) }
     }
 
     fun arm(params: ArmParams) {
+        // Arm the cannon, sending RPM, yaw, and pitch commands to the Arduino
+        // Also checks to see if it meets all the requirements for the cannon to be armed within a threshold
         val yawThreshold = 1
         val rpmThreshold = 100
         Log.d("Ballzooka", "Arming. RPM: ${params.speed}, Yaw: ${params.yaw}, Pitch: ${params.pitch}")
         viewModelScope.launch {
+            // Send all commands to the Arduino
             val rpmBytes = ByteBuffer.allocate(Double.SIZE_BYTES).putDouble(params.speed).array()
-            Log.d("Ballzooka", rpmBytes.toHexString())
             rpmBytes.reverse()
-            Log.d("Ballzooka", rpmBytes.toHexString())
+
             val yawBytes = ByteBuffer.allocate(Double.SIZE_BYTES).putDouble(params.yaw).array()
-            Log.d("Ballzooka", yawBytes.toHexString())
             yawBytes.reverse()
-            Log.d("Ballzooka", yawBytes.toHexString())
+
             val pitchBytes = ByteBuffer.allocate(Double.SIZE_BYTES).putDouble(params.pitch).array()
-            Log.d("Ballzooka", pitchBytes.toHexString())
             pitchBytes.reverse()
-            Log.d("Ballzooka", pitchBytes.toHexString())
 
             messenger.send(
                 messenger.characteristics!!.commandFlywheelRPM,
@@ -191,7 +198,7 @@ class BallzookaViewModel(
                 pitchBytes
             )
 
-            // wait for 10s for it to arm
+            // wait for 15s for it to arm
             val reached = withTimeoutOrNull(15_000L) {
                 telemetry.first {
                     ((it.leftrpm >= params.speed - rpmThreshold) && (it.leftrpm <= params.speed + rpmThreshold)) &&
@@ -201,10 +208,12 @@ class BallzookaViewModel(
             }
 
             if (reached != null) {
+                // If met thresholds...
                 if (uiState.value.currentState == AppState.AIMING) {
                     stateMachine.changeState(AppState.ARMED)
                 }
             } else {
+                // If didn't meet threshold in time
                 Log.w("Ballzooka", "arm() timed out waiting for RPM target")
                 _events.send(Event("Timed out waiting for RPM/yaw target, but passing anyway for demo", "Warning"))
 

@@ -108,10 +108,12 @@ fun MapDisplay(viewModel: BallzookaViewModel = viewModel()) {
         )
     )
 
+    // just makes the default camera pos on the EE building
     val cameraPositionState = rememberCameraPositionState {
         position = CameraPosition.fromLatLngZoom(LatLng(37.956547, -91.772350), 20f)
     }
 
+    // if we have perms, start subscribing to location updates
     LaunchedEffect(permissionsState.allPermissionsGranted) {
         if (permissionsState.allPermissionsGranted) {
             userLocationProvider.getLocationUpdates().collect { location ->
@@ -125,10 +127,12 @@ fun MapDisplay(viewModel: BallzookaViewModel = viewModel()) {
         mapType = MapType.SATELLITE
     )
 
+    // conePoints is used to draw the cone shape on the map where the cannon is pointed
     val conePoints = remember(cannonLocation, cannonBearing) {
         createConePolygon(cannonLocation, cannonBearing.toFloat(), 30f, 50.0)
     }
 
+    // Composable starts here
     Row {
         if (uiState.currentState == AppState.IDLE && telemetry.selection != LatLng(0.0, 0.0)) {
             PitchSlider()
@@ -263,6 +267,7 @@ class UserLocation(context: Context) {
 
     @RequiresPermission(allOf = [Manifest.permission.ACCESS_FINE_LOCATION])
     fun getLocationUpdates(interval: Long = 5000): Flow<Location> = callbackFlow {
+        // Subscribes to precise position updates
         val locationRequest = LocationRequest.Builder(
             Priority.PRIORITY_HIGH_ACCURACY,
             interval
@@ -322,6 +327,7 @@ fun createConePolygon(
 }
 
 fun offsetLatLng(center: LatLng, distanceMeters: Double, bearingDegrees: Double): LatLng {
+    // Gets the new LatLng using a point, the distance in meters, and the heading
     val earthRadius = 6371000.0
 
     val bearingRad = bearingDegrees.toRadians()
